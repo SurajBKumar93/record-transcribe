@@ -1,14 +1,16 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import RecordButton from "@/components/RecordButton";
 import AudioPlayer from "@/components/AudioPlayer";
 import TranscriptCard from "@/components/TranscriptCard";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useMicrophonePermission } from "@/hooks/useMicrophonePermission";
 import { useToast } from "@/hooks/use-toast";
 import { AlertCircle } from "lucide-react";
 
 const Index = () => {
   const { toast } = useToast();
+  const { permissionState, requestPermission, isChecking } = useMicrophonePermission();
   const { 
     isRecording, 
     audioUrl, 
@@ -25,11 +27,35 @@ const Index = () => {
     isSupported: isSpeechSupported,
   } = useSpeechRecognition();
 
+  // Show toast if permission is denied
+  useEffect(() => {
+    if (permissionState === "denied" && !isChecking) {
+      toast({
+        title: "Microphone Permission Required",
+        description: "Please enable microphone access in your device settings to use voice recording.",
+        variant: "destructive",
+      });
+    }
+  }, [permissionState, isChecking, toast]);
+
   const handleRecordToggle = useCallback(async () => {
     if (isRecording) {
       stopRecording();
       stopTranscription();
     } else {
+      // Ensure permission is granted before recording
+      if (permissionState !== "granted") {
+        const granted = await requestPermission();
+        if (!granted) {
+          toast({
+            title: "Microphone Access Required",
+            description: "Please grant microphone permission to record audio.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
       resetTranscript();
       await startRecording();
       if (isSpeechSupported) {
@@ -50,6 +76,8 @@ const Index = () => {
     startTranscription, 
     resetTranscript,
     isSpeechSupported,
+    permissionState,
+    requestPermission,
     toast
   ]);
 
