@@ -13,6 +13,9 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ["DM Sans", "sans-serif"],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -46,6 +49,11 @@ export default {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+        recording: {
+          DEFAULT: "hsl(var(--recording))",
+          foreground: "hsl(var(--recording-foreground))",
+          glow: "hsl(var(--recording-glow))",
         },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
