@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 
 interface UseSpeechRecognitionReturn {
   transcript: string;
@@ -7,16 +7,6 @@ interface UseSpeechRecognitionReturn {
   stopTranscription: () => void;
   resetTranscript: () => void;
   isSupported: boolean;
-}
-
-// Extend Window interface for SpeechRecognition
-interface SpeechRecognitionEvent extends Event {
-  results: SpeechRecognitionResultList;
-  resultIndex: number;
-}
-
-interface SpeechRecognitionErrorEvent extends Event {
-  error: string;
 }
 
 export const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
@@ -28,73 +18,85 @@ export const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
   const isSupported = typeof window !== "undefined" && 
     ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
 
-  useEffect(() => {
-    if (!isSupported) return;
+  const createRecognition = useCallback(() => {
+    if (!isSupported) return null;
 
     const SpeechRecognition = (window as any).SpeechRecognition || 
       (window as any).webkitSpeechRecognition;
     
     const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.interimResults = false;
     recognition.lang = "en-US";
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let finalTranscript = "";
-      let interimTranscript = "";
+    return recognition;
+  }, [isSupported]);
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          finalTranscript += result[0].transcript + " ";
-        } else {
-          interimTranscript += result[0].transcript;
-        }
+  const startTranscription = useCallback(() => {
+    if (!isSupported) return;
+
+    // Clear previous transcript
+    setTranscript("");
+    setIsTranscribing(true);
+
+    const recognition = createRecognition();
+    if (!recognition) return;
+
+    recognition.onresult = (event: any) => {
+      // Only process final results
+      const result = event.results[0];
+      if (result && result.isFinal) {
+        const finalTranscript = result[0].transcript;
+        setTranscript(prev => prev ? prev + " " + finalTranscript : finalTranscript);
       }
-
-      setTranscript(prev => {
-        const base = finalTranscript ? prev + finalTranscript : prev;
-        return interimTranscript ? base + interimTranscript : base;
-      });
     };
 
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+    recognition.onerror = (event: any) => {
       console.error("Speech recognition error:", event.error);
-      if (event.error !== "no-speech") {
+      if (event.error === "no-speech") {
+        // Restart if no speech detected and still transcribing
+        if (isTranscribing) {
+          try {
+            recognition.start();
+          } catch (err) {
+            // Ignore
+          }
+        }
+      } else {
         setIsTranscribing(false);
       }
     };
 
     recognition.onend = () => {
-      setIsTranscribing(false);
+      // Restart recognition if still in transcribing mode (continuous listening)
+      if (isTranscribing && recognitionRef.current === recognition) {
+        try {
+          recognition.start();
+        } catch (err) {
+          // Recognition might be stopped intentionally
+        }
+      }
     };
 
     recognitionRef.current = recognition;
 
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    };
-  }, [isSupported]);
-
-  const startTranscription = useCallback(() => {
-    if (recognitionRef.current && isSupported) {
-      setTranscript("");
-      setIsTranscribing(true);
-      try {
-        recognitionRef.current.start();
-      } catch (err) {
-        // Recognition might already be running
-        console.log("Recognition already started");
-      }
+    try {
+      recognition.start();
+    } catch (err) {
+      console.error("Failed to start recognition:", err);
+      setIsTranscribing(false);
     }
-  }, [isSupported]);
+  }, [isSupported, createRecognition, isTranscribing]);
 
   const stopTranscription = useCallback(() => {
+    setIsTranscribing(false);
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsTranscribing(false);
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        // Ignore errors when stopping
+      }
+      recognitionRef.current = null;
     }
   }, []);
 
